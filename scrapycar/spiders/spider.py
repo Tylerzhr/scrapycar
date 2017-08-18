@@ -6,7 +6,8 @@ from scrapy.linkextractors import LinkExtractor
 from scrapy.loader import ItemLoader
 from scrapy.spiders import CrawlSpider, Rule
 from urllib.parse import parse_qs, urlencode, urlparse
-from scrapycar.items import CarBrandItem
+from scrapycar.items import CarItem,SeriesItem
+import json
 
 class AutomobileSpider(scrapy.Spider):
     name = "automobile"
@@ -42,62 +43,77 @@ class AutomobileSpider(scrapy.Spider):
         # #车辆品牌图标
         # pinyin = response.meta["pinyin"]
         #car_brand_imagUrl = response.xpath("//dt/a/img/@src").extract()
-        item=CarBrandItem()
         dls = response.xpath("//dl")
         for dl in dls:
             #car_brand_imagUrl = dl.xpath("./dt/a/img/@src").extract()
-            #car_type_urls=dl.xpath("./dd/ul/li/h4/a/@href").extract()
+            car_type=dl.xpath("./dd/ul/li/h4")
             pinyin=response.meta["pinyin"]
             car_brand_name=format(dl.xpath("./dt/div/a/text()").extract()).replace("['", '').replace("']", '')
-            car_type_name = dl.xpath("./dd/ul/li/h4/a/text()").extract()
-            item['carbrand']=car_brand_name
-            item['pinyin']=pinyin
-            for type in car_type_name:
-                item['cartype'] = type
-            #item['logo']=car_brand_imagUrl
-            #print(item['logo'])
-            # for url in car_type_urls:
-            #     yield Request(url,callback=self.get_item,meta={"car_brand_name":car_brand_name})
-                yield item
-            #print( "车牌名称：" + format(car_brand_name)+"首拼音   "+pinyin+"logo"+car_brand_imagUrl)
+            for type in car_type:
+                car_type_url = format(type.xpath("./a/@href").extract()).replace("['", '').replace("']", '')
+                car_type_name = format(type.xpath("./a/text()").extract()).replace("['", '').replace("']", '')
+                #print(car_type_url)
+                yield Request(car_type_url,callback=self.get_item,meta={"car_brand_name":car_brand_name,"car_type_name":car_type_name,"pinyin":pinyin})
 
-    # def parse(self,response):
-    #     params = {
-    #         "url": response.url,
-    #         "status": response.status,
-    #         "headers": response.headers,
-    #         "body": response.body,
-    #     }
-    #
-    #     response = HtmlResponse(**params)
-    #
-    #     return super().parse(response)
 
+
+#在售车型
     def get_item(self, response):
-        item=CartypeItem()
+        item=CarItem()
         #获取上一请求的所有数据
-        sel = response.css("div.path")
-        car_brand_name = format(response.meta["car_brand_name"])
-        car_type_name= format(sel.css("a:last-child::text").extract())
+        car_brand_name = response.meta["car_brand_name"]
+        car_type_name= response.meta["car_type_name"]
+        pinyin=response.meta["pinyin"]
 
         for sel1 in response.css("div.interval01-list-cars-infor"):
-            #item['model']=sel1.css("a::text")[0]
             car_model=format(sel1.css("a::text")[0].extract())
-            #print("车品牌："+car_brand_name+"车系列"+car_type_name+"车型"+car_model)
-            item['model']=car_model
+            item['carmodel']=car_model
             item['carbrand']=car_brand_name
             item['cartype']=car_type_name
-            # print(item['cartype'],item['carbrand'],item['model'])
-            return item
+            item['pinyin']=pinyin
+            yield item
 
-    #def stop_sale(self, response):
-        #qs = parse_qs(urlparse(response.url).query)
 
-        #body = json.loads(response.body_as_unicode())
 
-        #for spec in body["Spec"]:
-            #yield {
-                #"model_id": str(spec["Id"]),
-                #"model_name": str(spec["Name"]),
-                #"series_id": str(qs["s"][0]),
+
+        sel = response.css("div.path")
+
+        loader = ItemLoader(item=SeriesItem(), selector=sel)
+        loader.add_css("series_id", "a:last-child::attr(href)")
+        loader.add_css("series_name", "a:last-child::text")
+
+        series = loader.load_item()
+        url = "http://www.autohome.com.cn/ashx/series_allspec.ashx"
+
+        years = response.css(".dropdown-content a::attr(data)")
+
+        for year in years.extract():
+            qs = {
+                "y": year,
+                "s": series["series_id"]
+            }
+            #print(url + "?" + urlencode(qs))
+            yield Request(url + "?" + urlencode(qs), self.stop_sale,meta={"car_brand_name":car_brand_name,"car_type_name":car_type_name,"pinyin":pinyin})
+#停售车型
+    def stop_sale(self, response):
+        item = CarItem()
+        car_brand_name = response.meta["car_brand_name"]
+        car_type_name= response.meta["car_type_name"]
+        pinyin=response.meta["pinyin"]
+        item['carbrand'] = car_brand_name
+        item['cartype'] = car_type_name
+        item['pinyin'] = pinyin
+        qs = parse_qs(urlparse(response.url).query)
+
+        body = json.loads(response.body_as_unicode())
+
+        for spec in body["Spec"]:
+            car_model=str(spec["Name"])
+            item['carmodel']=car_model
+            yield item
+            #print(str(spec["Name"]))
+           #  yield {
+           #      "model_id": str(spec["Id"]),
+           #      "model_name": str(spec["Name"]),
+           #      "series_id": str(qs["s"][0]),
            # }

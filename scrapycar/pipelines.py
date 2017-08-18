@@ -1,5 +1,5 @@
 from scrapy.exceptions import DropItem
-from scrapycar.items import CarBrandItem
+from scrapycar.items import CarItem
 import pymysql
 from scrapycar import settings
 MYSQL_HOSTS = settings.MYSQL_HOSTS
@@ -16,13 +16,14 @@ cursor.execute('SET CHARACTER SET utf8;')
 cursor.execute('SET character_set_connection=utf8;')
 class ScrapycarPipeline(object):
     def process_item(self, item, spider):
-        if isinstance(item,CarBrandItem):
+        if isinstance(item,CarItem):
             carbrand=item['carbrand']
             cartype=item['cartype']
             pinyin=item['pinyin']
-            sql = """INSERT INTO carbrand1(carbrand,pinyin,cartype) VALUES (%s,%s,%s)"""
-            value=(carbrand,pinyin,cartype)
-            print(carbrand,pinyin,cartype)
+            model=item['carmodel']
+            sql = """INSERT INTO carbrand1(carbrand,pinyin,cartype,model) VALUES (%s,%s,%s,%s)"""
+            value=(carbrand,pinyin,cartype,model)
+            print(value)
             cursor.execute(sql,value)
             db.commit()
 
