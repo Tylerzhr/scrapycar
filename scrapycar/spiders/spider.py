@@ -43,12 +43,24 @@ class AutomobileSpider(scrapy.Spider):
         # #车辆品牌图标
         # pinyin = response.meta["pinyin"]
         #car_brand_imagUrl = response.xpath("//dt/a/img/@src").extract()
+
         dls = response.xpath("//dl")
         for dl in dls:
             #car_brand_imagUrl = dl.xpath("./dt/a/img/@src").extract()
             car_type=dl.xpath("./dd/ul/li/h4")
             pinyin=response.meta["pinyin"]
             car_brand_name=format(dl.xpath("./dt/div/a/text()").extract()).replace("['", '').replace("']", '')
+
+            #添加greylink识别
+            greylinks = dl.xpath(".//a[@class='greylink']")
+            for greylink in greylinks:
+                greylink_car_type_name=format(greylink.xpath("./text()").extract()).replace("['", '').replace("']", '')
+                greylink_url=format(greylink.xpath("./@href").extract()).replace("['", '').replace("']", '')
+                yield Request(greylink_url,self.get_greylink,meta={"car_brand_name":car_brand_name,"car_type_name":greylink_car_type_name,"pinyin":pinyin})
+
+
+
+            #正常链接爬取
             for type in car_type:
                 car_type_url = format(type.xpath("./a/@href").extract()).replace("['", '').replace("']", '')
                 car_type_name = format(type.xpath("./a/text()").extract()).replace("['", '').replace("']", '')
@@ -57,6 +69,22 @@ class AutomobileSpider(scrapy.Spider):
 
 
 
+
+#greylink网页中存在的车型
+    def get_greylink(self,response):
+        item = CarItem()
+        car_brand_name = response.meta["car_brand_name"]
+        car_type_name= response.meta["car_type_name"]
+        pinyin=response.meta["pinyin"]
+        car_models=response.xpath("//td[@class='name_d']")
+        for car_modeltem in car_models:
+            car_model=format(car_modeltem.xpath("./a/text()").extract()).replace("['", '').replace("']", '')
+            item['carmodel'] = car_model
+            item['carbrand'] = car_brand_name
+            item['cartype'] = car_type_name
+            item['pinyin'] = pinyin
+            yield item
+
 #在售车型
     def get_item(self, response):
         item=CarItem()
@@ -64,7 +92,6 @@ class AutomobileSpider(scrapy.Spider):
         car_brand_name = response.meta["car_brand_name"]
         car_type_name= response.meta["car_type_name"]
         pinyin=response.meta["pinyin"]
-
         for sel1 in response.css("div.interval01-list-cars-infor"):
             car_model=format(sel1.css("a::text")[0].extract())
             item['carmodel']=car_model
@@ -74,8 +101,7 @@ class AutomobileSpider(scrapy.Spider):
             yield item
 
 
-
-
+#停售链接拼接
         sel = response.css("div.path")
 
         loader = ItemLoader(item=SeriesItem(), selector=sel)
